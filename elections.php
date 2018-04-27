@@ -60,7 +60,8 @@ class CsoElections
         if (isset($att['start'])) {
             $hash = $this->getHash();
             $verified = $this->verifyHash($hash);
-            if (!$verified) {
+            $alreadyVoted = $this->electionsPosts->testIfAlreadyVoted($hash);
+            if (!$verified || $alreadyVoted) {
                 $this->block = true;
                 return 'This content is not available.';
             }

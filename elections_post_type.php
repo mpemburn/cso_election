@@ -15,12 +15,12 @@ class ElectionsPosts
             $post_id = wp_insert_post(array (
                 'post_type' => 'elections',
                 'post_title' => $office . ';' . time(),
-                'post_name' => $hash,
                 'post_content' => $candidate,
                 'post_status' => 'publish',
                 'comment_status' => 'closed',
                 'ping_status' => 'closed',
             ));
+            update_post_meta($post_id, 'hash', $hash);
         }
     }
 
@@ -52,6 +52,24 @@ class ElectionsPosts
         ];
 
         register_post_type('elections', $postTypeArgs);
+    }
+
+    public function testIfAlreadyVoted($hash)
+    {
+        $vote = new WP_Query(array(
+            'post_type' => 'elections',
+            'meta_query'    => array(
+                array(
+                    'key' => 'hash',
+                    'value' => $hash,
+                    'compare' => '='
+                )
+            )
+        ));
+
+        $hasVoted = $vote->have_posts();
+
+        return $hasVoted;
     }
 
 }
