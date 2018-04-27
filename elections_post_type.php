@@ -7,7 +7,7 @@ class ElectionsPosts
         add_action('init', array($this, 'registerPostType'));
     }
 
-    public function recordVote($voteData, $electionData, $hash)
+    public function recordVote($voteData, $electionData, $electionDate, $hash)
     {
         foreach ($voteData as $office => $vote) {
             $race = $electionData[$office];
@@ -20,6 +20,7 @@ class ElectionsPosts
                 'comment_status' => 'closed',
                 'ping_status' => 'closed',
             ));
+            update_post_meta($post_id, 'election_date', $electionDate);
             update_post_meta($post_id, 'hash', $hash);
         }
     }
@@ -54,16 +55,26 @@ class ElectionsPosts
         register_post_type('elections', $postTypeArgs);
     }
 
-    public function testIfAlreadyVoted($hash)
+    public function listVotes()
+    {
+
+    }
+
+    public function testIfAlreadyVoted($electionDate, $hash)
     {
         $vote = new WP_Query(array(
             'post_type' => 'elections',
             'meta_query'    => array(
                 array(
+                    'key' => 'election_date',
+                    'value' => $electionDate,
+                    'compare' => '='
+                ),
+                array(
                     'key' => 'hash',
                     'value' => $hash,
                     'compare' => '='
-                )
+                ),
             )
         ));
 

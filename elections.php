@@ -60,7 +60,8 @@ class CsoElections
         if (isset($att['start'])) {
             $hash = $this->getHash();
             $verified = $this->verifyHash($hash);
-            $alreadyVoted = $this->electionsPosts->testIfAlreadyVoted($hash);
+            $electionDate = get_post_meta($postId, 'election_date');
+            $alreadyVoted = false; //$this->electionsPosts->testIfAlreadyVoted($electionDate, $hash);
             if (!$verified || $alreadyVoted) {
                 $this->block = true;
                 return 'This content is not available.';
@@ -124,13 +125,13 @@ class CsoElections
     {
         $electionDate = get_post_meta($postId, 'election_date');
         $date = (isset($attributes['date'])) ? $attributes['date'] : null;
-        if (!empty($electionDate) && ! is_null($date)) {
+        if (empty($electionDate) && ! is_null($date)) {
             update_post_meta($postId, 'election_date', strtotime($date));
         }
 
         $electionData = get_post_meta($postId, 'elections');
         $candidates = (isset($attributes['candidates'])) ? $attributes['candidates'] : null;
-        if (!empty($electionData) && ! is_null($candidates)) {
+        if (empty($electionData) && ! is_null($candidates)) {
             // Add the data to the post meta
             update_post_meta($postId, 'elections', $this->raceData);
         }
@@ -203,7 +204,9 @@ class CsoElections
         unset($voteData['post_id']);
         unset($voteData['hash']);
 
-        $this->electionsPosts->recordVote($voteData, array_pop($electionData), $hash);
+        $electionDate = get_post_meta($postId, 'election_date');
+
+        $this->electionsPosts->recordVote($voteData, array_pop($electionData), $electionDate, $hash);
 
         wp_send_json_success(['success' => $success, 'post' => $electionData]);
     }
