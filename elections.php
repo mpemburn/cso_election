@@ -20,6 +20,7 @@ class CsoElections
     /** @var \ElectionsPosts $electionsPosts */
     protected $electionsPosts;
     protected $block = false;
+    protected $errorMessage;
 
     public static function register()
     {
@@ -59,12 +60,10 @@ class CsoElections
 
         if (isset($att['start'])) {
             $hash = $this->getHash();
-            $verified = $this->verifyHash($hash);
-            $electionDate = get_post_meta($postId, 'election_date');
-            $alreadyVoted = false; //$this->electionsPosts->testIfAlreadyVoted($electionDate, $hash);
-            if (!$verified || $alreadyVoted) {
+            $eligible = $this->testForElegibility($postId, $hash);
+            if (!$eligible) {
                 $this->block = true;
-                return 'This content is not available.';
+                return $this->errorMessage;
             }
             $html = $this->buildFormHead($hash, $postId);
         }
@@ -103,6 +102,13 @@ class CsoElections
         return $hash;
     }
 
+    protected function getElectionDateStamp($postId)
+    {
+        $electionDate = get_post_meta($postId, 'election_date');
+
+        return (!empty($electionDate)) ? array_pop($electionDate) : null;
+    }
+
     protected function verifyHash($hash)
     {
         $key = md5('Baloney');
@@ -123,7 +129,7 @@ class CsoElections
 
     protected function setElectionMeta($attributes, $postId)
     {
-        $electionDate = get_post_meta($postId, 'election_date');
+        $electionDate = $this->getElectionDateStamp($postId);
         $date = (isset($attributes['date'])) ? $attributes['date'] : null;
         if (empty($electionDate) && ! is_null($date)) {
             update_post_meta($postId, 'election_date', strtotime($date));
@@ -204,7 +210,7 @@ class CsoElections
         unset($voteData['post_id']);
         unset($voteData['hash']);
 
-        $electionDate = get_post_meta($postId, 'election_date');
+        $electionDate = $this->getElectionDateStamp($postId);
 
         $this->electionsPosts->recordVote($voteData, array_pop($electionData), $electionDate, $hash);
 
@@ -225,6 +231,23 @@ class CsoElections
                 'ping_status' => 'closed',
             ));
         }
+    }
+
+    protected function testForElegibility($postId, $hash)
+    {
+        $verified = $this->verifyHash($hash);
+        $electionDate = $this->getElectionDateStamp($postId);
+        $alreadyVoted = $this->electionsPosts->testIfAlreadyVoted($electionDate, $hash);
+        if (!$verified) {
+            $this->errorMessage = 'This content is not available.';
+            return false;
+        }
+        if ($alreadyVoted) {
+            $this->errorMessage = 'Your vote has already been recorded.';
+            return false;
+        }
+
+        return true;
     }
 
     protected function loadSettings()
