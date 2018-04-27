@@ -2,6 +2,7 @@
 
 include 'admin_settings.php';
 include 'elections_post_type.php';
+include 'crypto.php';
 
 /*
  * @wordpress-plugin
@@ -15,9 +16,10 @@ include 'elections_post_type.php';
 class CsoElections
 {
     protected $officeCount = 0;
-    protected $data = [];
+    protected $raceData = [];
     /** @var \ElectionsPosts $electionsPosts */
     protected $electionsPosts;
+    protected $block = false;
 
     public static function register()
     {
@@ -45,16 +47,28 @@ class CsoElections
 
     public function electionShortcodeHandler($att, $content)
     {
+        if ($this->block) {
+            return '';
+        }
+
         global $post;
 
+        $postId = $post->ID;
         $html = '';
+        $officeKey = '';
 
         if (isset($att['start'])) {
-            $html = $this->buildFormHead($_GET, $post->ID);
+            $hash = $this->getHash();
+            $verified = $this->verifyHash($hash);
+            if (!$verified) {
+                $this->block = true;
+                return 'This content is not available.';
+            }
+            $html = $this->buildFormHead($hash, $postId);
         }
 
         if (isset($att['date'])) {
-            $this->setElectionMeta($att['date'], $post->ID);
+            $this->setElectionMeta($att, $postId);
         }
 
         if (isset($att['office'])) {
@@ -66,8 +80,10 @@ class CsoElections
         }
 
         if (isset($att['candidates'])) {
-            $choices = $this->buildCandidates($att['candidates'], $officeKey, $post->ID);
+            $choices = $this->buildCandidates($att['candidates'], $officeKey, $postId);
             $html = str_replace('~~~', $choices, $html);
+
+            $this->setElectionMeta($att, $postId);
         }
 
         if (isset($att['end'])) {
@@ -77,9 +93,46 @@ class CsoElections
         return $html;
     }
 
-    protected function setElectionMeta($date, $postId)
+    protected function getHash()
     {
+        $request = $_GET;
+        $hash = (isset($request['x'])) ? $request['x'] : null;
 
+        return $hash;
+    }
+
+    protected function verifyHash($hash)
+    {
+        $key = md5('Baloney');
+        $phone = Crypto::decrypt($hash, $key, true);
+
+        $url = 'http://chesapeakespokesclub.org/cso_roster/public/api/member/verify/' . $phone;
+        $response = $this->makeApiCall('GET', $url);
+
+        if (strstr($response['body'], '{"success"') !== 'false') {
+            $memberData = json_decode($response['body']);
+            if ($memberData->success) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function setElectionMeta($attributes, $postId)
+    {
+        $electionDate = get_post_meta($postId, 'election_date');
+        $date = (isset($attributes['date'])) ? $attributes['date'] : null;
+        if (!empty($electionDate) && ! is_null($date)) {
+            update_post_meta($postId, 'election_date', strtotime($date));
+        }
+
+        $electionData = get_post_meta($postId, 'elections');
+        $candidates = (isset($attributes['candidates'])) ? $attributes['candidates'] : null;
+        if (!empty($electionData) && ! is_null($candidates)) {
+            // Add the data to the post meta
+            update_post_meta($postId, 'elections', $this->raceData);
+        }
     }
 
     protected function buildRace($office)
@@ -104,24 +157,25 @@ class CsoElections
             $choice .= '<input type="radio" name="' . $officeKey . '" value="' . $value . '" class="required"/>' . $name;
             $choice .= '</label>';
             $choices .= $choice;
-            $this->data[$officeKey][$value] = $name;
-            // Add the data to the post meta
-            update_post_meta($postId, 'elections', $this->data);
+            // Save the race data
+            $this->raceData[$officeKey][$value] = $name;
         }
 
         return $choices;
     }
 
-    protected function buildFormHead($request, $postId)
+    protected function buildFormHead($hash, $postId)
     {
-        $hash = (isset($request['x'])) ? $request['x'] : null;
+        if (!empty($hash)) {
+            $html = '<div id="">';
+            $html .= '<form id="cso_election">';
+            $html .= '<input type="hidden" id="post_id" name="post_id" value="' . $postId . '">';
+            $html .= '<input type="hidden" id="hash" name="hash" value="' . $hash . '">';
 
-        $html = '<div id="">';
-        $html .= '<form id="cso_election">';
-        $html .= '<input type="hidden" id="post_id" name="post_id" value="' . $postId . '">';
-        $html .= '<input type="hidden" id="hash" name="hash" value="' . $hash . '">';
+            return $html;
+        }
 
-        return $html;
+        return false;
     }
 
     protected function buildFormTail()
@@ -192,6 +246,32 @@ class CsoElections
             'ajaxUrl' => admin_url('admin-ajax.php'),
         ]);
         wp_enqueue_script('election-ajax-js');
+    }
+
+    protected function makeApiCall($action, $url, $data = [])
+    {
+        $response = null;
+
+        // TODO: Future security enhancement
+        $username = 'your-username';
+        $password = 'your-password';
+        $headers = array('Authorization' => 'Basic ' . base64_encode("$username:$password"));
+        if ($action == 'GET') {
+            $response = wp_remote_get($url, [
+                'headers' => $headers,
+                'sslverify' => false
+            ]);
+        }
+        if ($action == 'POST') {
+            $response = wp_remote_post($url, [
+                'headers' => $headers,
+                'body' => $data,
+                'sslverify' => false,
+                'timeout' => 45,
+            ]);
+        }
+
+        return $response;
     }
 
 
